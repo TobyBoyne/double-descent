@@ -45,7 +45,7 @@ model.compiled_predict_y = tf.function(
     input_signature=[tf.TensorSpec(shape=[None, 1], dtype=tf.float64)],
 )
 
-save_dir = "saved_model_0"
+save_dir = "models/saved_model_0"
 tf.saved_model.save(model, save_dir)
 
 # loaded_model = tf.saved_model.load(save_dir)
