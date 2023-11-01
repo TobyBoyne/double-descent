@@ -29,8 +29,6 @@ def plot_kernel_samples(ax: Axes, kernel: gpflow.kernels.Kernel) -> None:
 def plot_kernel_prediction(
     ax: Axes, kernel: gpflow.kernels.Kernel, *, optimise: bool = True
 ) -> None:
-    # X = np.array([[-0.5], [0.0], [0.4], [0.5]])
-    # Y = np.array([[1.0], [0.0], [0.6], [0.4]])
     noise_var = 0.25
     X, Y = noisy_step()
     model = gpflow.models.GPR(
@@ -77,6 +75,6 @@ def plot_kernel(
     plot_kernel_prediction(prediction_ax, kernel, optimise=optimise)
 
 
-plot_kernel(Fourier(degree=5), optimise=False)
+plot_kernel(Fourier(degree=12), optimise=True)
 # plot_kernel(gpflow.kernels.SquaredExponential())
 plt.show()

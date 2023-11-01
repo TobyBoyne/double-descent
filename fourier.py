@@ -1,80 +1,82 @@
 """A Fourier model"""
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 import numpy as np
 
 import gpflow
 import tensorflow as tf
 from doubledescent.fourierkernel import Fourier
+from doubledescent.step import noisy_step
 
-X = np.array(
-    [
-        [0.865], [0.666], [0.804], [0.771], [0.147], [0.866], [0.007], [0.026],
-        [0.171], [0.889], [0.243], [0.028],
-    ]
-)
-Y = np.array(
-    [
-        [1.57], [3.48], [3.12], [3.91], [3.07], [1.35], [3.80], [3.82], [3.49],
-        [1.30], [4.00], [3.82],
-    ]
-)
+NOISE_VAR = 0.25
 
-# define model
-model = gpflow.models.GPR(
-    (X, Y),
-    # kernel=gpflow.kernels.SquaredExponential(),
-    kernel=Fourier(),
-)
+def fit_fourier_model(X, Y, degree: int, scaling: int):
+    # log_marginal_likelihood
+    # define model
+    model = gpflow.models.GPR(
+        (X, Y),
+        kernel=Fourier(degree=degree, scaling=scaling),
+        noise_variance=NOISE_VAR
+    )
 
-# train model
-opt = gpflow.optimizers.Scipy()
-opt.minimize(model.training_loss, model.trainable_variables)
+    gpflow.set_trainable(model.likelihood, False)
+    gpflow.set_trainable(model.kernel.lengthscales, False)
+    opt = gpflow.optimizers.Scipy()
+    opt.minimize(model.training_loss, model.trainable_variables)
+    
+    return model
 
-Xnew = np.array([[0.5]])
-model.predict_f(Xnew)
-model.predict_y(Xnew)
+def plot_fitted_model(X, Y, model, ax: Axes):
+    Xplot = np.linspace(-1.8, 1.8, 100)[:, None]
+    f_mean, _ = model.predict_f(Xplot, full_cov=False)
 
+    # have to manually compute the variance due to instability in gpflow
+    kernel: Fourier = model.kernel
+    Kss = kernel(Xplot, Xplot)
+    Ksx = kernel(Xplot, X)
+    Kxx = kernel(X, X)
+    Kxs = kernel(X, Xplot)
+    var_mat = Kss - Ksx @ (tf.linalg.inv(Kxx + NOISE_VAR * tf.eye(X.shape[0], dtype=tf.float64)) @ Kxs)
+    f_var = tf.linalg.diag_part(var_mat)[:, None]
 
-# save model
-model.compiled_predict_f = tf.function(
-    lambda Xnew: model.predict_f(Xnew, full_cov=False),
-    input_signature=[tf.TensorSpec(shape=[None, 1], dtype=tf.float64)],
-)
-model.compiled_predict_y = tf.function(
-    lambda Xnew: model.predict_y(Xnew, full_cov=False),
-    input_signature=[tf.TensorSpec(shape=[None, 1], dtype=tf.float64)],
-)
+    f_lower = f_mean - 1.96 * np.sqrt(f_var)
+    f_upper = f_mean + 1.96 * np.sqrt(f_var)
 
-save_dir = "models/saved_model_0"
-tf.saved_model.save(model, save_dir)
-
-# loaded_model = tf.saved_model.load(save_dir)
-
-# plot_prediction(model.predict_y)
-# plot_prediction(loaded_model.compiled_predict_y)
+    ax.scatter(X, Y, color="black", marker="x")
+    (mean_line,) = ax.plot(Xplot, f_mean, "-", label=kernel.__class__.__name__)
+    color = mean_line.get_color()
+    ax.plot(Xplot, f_lower, lw=0.1, color=color)
+    ax.plot(Xplot, f_upper, lw=0.1, color=color)
+    ax.fill_between(
+        Xplot[:, 0], f_lower[:, 0], f_upper[:, 0], color=color, alpha=0.1
+    )
+    ax.set_ylim(bottom=-3.0, top=3.0)
+    ax.set_title(f"degree={kernel.degree}")
 
 
-# test points
-Xplot = np.linspace(-0.1, 1.1, 100)[:, None]
-f_mean, f_var = model.predict_f(Xplot, full_cov=False)
-y_mean, y_var = model.predict_y(Xplot)
 
-f_lower = f_mean - 1.96 * np.sqrt(f_var)
-f_upper = f_mean + 1.96 * np.sqrt(f_var)
-y_lower = y_mean - 1.96 * np.sqrt(y_var)
-y_upper = y_mean + 1.96 * np.sqrt(y_var)
+def main_increasing_degree():
+    X, Y = noisy_step(noise_variance=NOISE_VAR)
+    fig, axs = plt.subplots(nrows=2, ncols=6, figsize=(20, 10))
+    degs = 2 * np.arange(axs.size)
+    scaling = 0
+    # degs[-1] = 500
+    marginal_likelihoods = []
+    for ax, deg in zip(axs.flatten(), degs):
+        model = fit_fourier_model(X, Y, deg, scaling)
+        plot_fitted_model(X, Y, model, ax)
+        marginal_likelihoods.append(model.log_marginal_likelihood())
+    fig_marginals, ax_marginals = plt.subplots()
+    ax_marginals: Axes
+    probs = tf.exp(tf.stack(marginal_likelihoods))
+    ax_marginals.bar(degs, probs / tf.reduce_sum(probs), width=1.6)
+    ax_marginals.set_xticks(degs)
+    ax_marginals.set_xlabel("Model degree")
+    ax_marginals.set_ylabel("Model probability, $p(\mathcal{M} | \mathcal{D})$")
+    
+    fig.savefig(f"figs/fit_kernels_{scaling}.pdf")
+    fig_marginals.savefig(f"figs/model_probs_{scaling}.pdf")
+    plt.show()
 
-plt.plot(X, Y, "kx", mew=2, label="input data")
-plt.plot(Xplot, f_mean, "-", color="C0", label="mean")
-plt.plot(Xplot, f_lower, "--", color="C0", label="f 95% confidence")
-plt.plot(Xplot, f_upper, "--", color="C0")
-plt.fill_between(
-    Xplot[:, 0], f_lower[:, 0], f_upper[:, 0], color="C0", alpha=0.1
-)
-plt.plot(Xplot, y_lower, ".", color="C0", label="Y 95% confidence")
-plt.plot(Xplot, y_upper, ".", color="C0")
-plt.fill_between(
-    Xplot[:, 0], y_lower[:, 0], y_upper[:, 0], color="C0", alpha=0.1
-)
-plt.legend()
-plt.show()
+if __name__ == "__main__":
+    main_increasing_degree()

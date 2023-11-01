@@ -1,3 +1,7 @@
+"""Implements a Fourier kernel as described in [Rasmussen and Ghahramani, 2000]
+K(x, x') = [\sum_{d=0}^D \cos (d(x-x'))/c_d] / S
+"""
+
 import tensorflow as tf
 import numpy as np
 import gpflow
@@ -7,10 +11,10 @@ from check_shapes import inherit_check_shapes
 
 
 class Fourier(gpflow.kernels.IsotropicStationary):
-    def __init__(self, degree: int):
+    def __init__(self, degree: int, scaling: int):
         super().__init__()
         self.variance = gpflow.Parameter(1.0, transform=positive(), name="variance")
-        self.cs = gpflow.Parameter([1.0 for _ in range(degree+1)], transform=positive(), name="cs", trainable=False)
+        self.scaling = scaling
         self.degree = degree
 
     def K_r(self, r: TensorType):
@@ -19,8 +23,6 @@ class Fourier(gpflow.kernels.IsotropicStationary):
         deg = tf.range(self.degree+1, dtype=tf.float64)
         # match dimensions
         r = tf.expand_dims(r, axis=-1)
-
+        c = tf.pow((deg+1), self.scaling)
         # cs are lengthscales outside of cosine
-        c = self.cs
-        # print(">", tf.math.reduce_sum(tf.cos(deg * r) / 1.0, axis=-1) )
-        return self.variance * tf.math.reduce_sum(tf.cos(deg * r) / 1.0, axis=-1)        
+        return self.variance * tf.math.reduce_sum(tf.cos(deg * r) / c, axis=-1)        
