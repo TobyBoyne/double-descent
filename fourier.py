@@ -48,35 +48,57 @@ def plot_fitted_model(X, Y, model, ax: Axes):
     ax.plot(Xplot, f_lower, lw=0.1, color=color)
     ax.plot(Xplot, f_upper, lw=0.1, color=color)
     ax.fill_between(
-        Xplot[:, 0], f_lower[:, 0], f_upper[:, 0], color=color, alpha=0.1
+        Xplot[:, 0], f_lower[:, 0], f_upper[:, 0], color=color, alpha=0.3
     )
     ax.set_ylim(bottom=-3.0, top=3.0)
+    # ax.set_title(f"GP fit to data")
     ax.set_title(f"degree={kernel.degree}")
 
+def plot_kernel_samples(model, ax: Axes) -> None:
+    Xplot = np.linspace(-1.8, 1.8, 100)[:, None]
+    tf.random.set_seed(20220903)
+    n_samples = 10
+    # predict_f_samples draws n_samples examples of the function f, and returns their values at Xplot.
+    fs = model.predict_f_samples(Xplot, n_samples)
+    ax.plot(Xplot, fs[:, :, 0].numpy().T, label=model.kernel.__class__.__name__)
+    ax.set_ylim(bottom=-4.0, top=4.0)
+    ax.set_title("Sample functions from prior")
 
-
-def main_increasing_degree():
+def main_increasing_degree(scaling):
     X, Y = noisy_step(noise_variance=NOISE_VAR)
     fig, axs = plt.subplots(nrows=2, ncols=6, figsize=(20, 10))
     degs = 2 * np.arange(axs.size)
-    scaling = 0
-    # degs[-1] = 500
     marginal_likelihoods = []
     for ax, deg in zip(axs.flatten(), degs):
         model = fit_fourier_model(X, Y, deg, scaling)
         plot_fitted_model(X, Y, model, ax)
         marginal_likelihoods.append(model.log_marginal_likelihood())
-    fig_marginals, ax_marginals = plt.subplots()
+    fig_marginals, ax_marginals = plt.subplots(figsize=(6, 1.5))
     ax_marginals: Axes
     probs = tf.exp(tf.stack(marginal_likelihoods))
     ax_marginals.bar(degs, probs / tf.reduce_sum(probs), width=1.6)
     ax_marginals.set_xticks(degs)
     ax_marginals.set_xlabel("Model degree")
-    ax_marginals.set_ylabel("Model probability, $p(\mathcal{M} | \mathcal{D})$")
+    ax_marginals.set_ylabel("Model evidence,\n$p(\mathcal{M} | \mathcal{D})$")
     
     fig.savefig(f"figs/fit_kernels_{scaling}.pdf")
-    fig_marginals.savefig(f"figs/model_probs_{scaling}.pdf")
-    plt.show()
+    fig_marginals.savefig(f"figs/model_probs_{scaling}.pdf", bbox_inches="tight")
+
+
+def main_single_figs():
+    """Plot many single figures for demonstration"""
+    X, Y = noisy_step(noise_variance=NOISE_VAR)
+    degs = [1, 2, 4, 12, 20]
+    scaling = 0
+    for deg in degs:
+        model = fit_fourier_model(X, Y, deg, scaling)
+        fig, (ax_prior, ax_fit) = plt.subplots(ncols=2, figsize=(12, 6))
+        plot_kernel_samples(model, ax_prior)
+        plot_fitted_model(X, Y, model, ax_fit)
+        fig.savefig(f"figs/single/fit_deg{deg}.pdf")
+
 
 if __name__ == "__main__":
-    main_increasing_degree()
+    main_increasing_degree(scaling=0)
+    main_increasing_degree(scaling=3)
+    main_increasing_degree(scaling=6)
