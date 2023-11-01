@@ -22,5 +22,5 @@ class Fourier(gpflow.kernels.IsotropicStationary):
 
         # cs are lengthscales outside of cosine
         c = self.cs
-        print(">", tf.math.reduce_sum(tf.cos(deg * r) / 1.0, axis=-1) )
+        # print(">", tf.math.reduce_sum(tf.cos(deg * r) / 1.0, axis=-1) )
         return self.variance * tf.math.reduce_sum(tf.cos(deg * r) / 1.0, axis=-1)        

@@ -31,9 +31,10 @@ def plot_kernel_prediction(
 ) -> None:
     # X = np.array([[-0.5], [0.0], [0.4], [0.5]])
     # Y = np.array([[1.0], [0.0], [0.6], [0.4]])
+    noise_var = 0.25
     X, Y = noisy_step()
     model = gpflow.models.GPR(
-        (X, Y), kernel=deepcopy(kernel), noise_variance=0.25
+        (X, Y), kernel=deepcopy(kernel), noise_variance=noise_var
     )
 
     if optimise:
@@ -45,7 +46,14 @@ def plot_kernel_prediction(
     Xplot = np.linspace(-1.5, 1.5, 100)[:, None]
 
     f_mean, f_var = model.predict_f(Xplot, full_cov=False)
-    # print(f_var)
+
+    Kss = model.kernel(Xplot, Xplot)
+    Ksx = model.kernel(Xplot, X)
+    Kxx = model.kernel(X, X)
+    Kxs = model.kernel(X, Xplot)
+    my_var = Kss - Ksx @ (tf.linalg.inv(Kxx + noise_var * tf.eye(X.shape[0], dtype=tf.float64)) @ Kxs)
+    f_var = tf.linalg.diag_part(my_var)[:, None]
+    
     f_lower = f_mean - 1.96 * np.sqrt(f_var)
     f_upper = f_mean + 1.96 * np.sqrt(f_var)
 
@@ -69,6 +77,6 @@ def plot_kernel(
     plot_kernel_prediction(prediction_ax, kernel, optimise=optimise)
 
 
-plot_kernel(Fourier(degree=5))
+plot_kernel(Fourier(degree=5), optimise=False)
 # plot_kernel(gpflow.kernels.SquaredExponential())
 plt.show()
